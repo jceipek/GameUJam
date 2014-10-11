@@ -14,7 +14,6 @@ $(function () {
   var LoadedSounds = {};
 
   var soundLoaded = function (event) {
-    console.log('SOUND LOADED');
     LoadedSounds[event.id] = true;
     if (event.id === "BackgroundMusic") {
       createjs.Sound.play('sounds/backGroundMusic.mp3');
@@ -43,7 +42,7 @@ $(function () {
   var resetGame = function () {
     State = {
       mines: []
-    , player: {x: CENTER.x, y: CENTER.y, dir: {x: 10, y: 0}, dashCooldown: 0, fullDashTime: 500}
+    , player: {x: CENTER.x, y: CENTER.y, dir: {x: 10, y: 0}, dashCooldown: 0, fullDashTime: 800, dashResetTime: 700}
     , runState: 'PLAY'
     , timer: 30000
     , maxTimer: 30000
@@ -72,7 +71,7 @@ $(function () {
   socket.on('touch', function (e) {
     if (State.mines.length < MAXCOUNT) {
       createjs.Sound.play('sounds/placeTheMine.mp3');
-      State.mines.push({x: e.x, y: e.y, radius: 10, cooldown: 400, sound: false});
+      State.mines.push({x: e.x, y: e.y, radius: 10, cooldown: 700, sound: false});
     } else {
       createjs.Sound.play('sounds/error.mp3');
     }
@@ -83,13 +82,14 @@ $(function () {
   , LEFT: 37
   , UP: 38
   , DOWN: 40
-  // , SPACE: 0
+  , SPACE: 32
   };
   var KeyState = {
     39: false
   , 37: false
   , 38: false
   , 40: false
+  , 32: false
   }
   $(window).keydown(function (event) {
     for (var opt in Keys) {
@@ -100,7 +100,6 @@ $(function () {
         }
       }
     }
-    console.log(event.which);
   });
   $(window).keyup(function (event) {
     for (var opt in Keys) {
@@ -135,9 +134,22 @@ $(function () {
   }
 
   var updatePlayer = function (diff) {
-    var speed = 0.4;
+    var speed = 0.39;
     var dirMag = 10;
     var dir = {x: 0, y: 0};
+
+    if (KeyState[Keys.SPACE] && State.player.dashCooldown <= -State.player.dashResetTime) {
+      State.player.dashCooldown = State.player.fullDashTime;
+    }
+
+    if (State.player.dashCooldown > -State.player.dashResetTime) {
+      State.player.dashCooldown -= diff;
+    }
+
+    if (State.player.dashCooldown > 0) {
+      speed = 1;
+    }
+
     if (KeyState[Keys.LEFT]) {
       dir.x = -1;
     }
@@ -154,6 +166,8 @@ $(function () {
     if (magnitude(addVec(newPos,{x: -CENTER.x, y: -CENTER.y})) > INNER_SIZE) {
       newPos = addVec(scaleVec(normalize(addVec(newPos,{x: -CENTER.x, y: -CENTER.y})), INNER_SIZE),{x: CENTER.x, y: CENTER.y});
     }
+
+
 
     State.player.x = newPos.x;
     State.player.y = newPos.y;
@@ -207,6 +221,10 @@ $(function () {
 
 
     // Draw Player
+    if (State.player.dashCooldown > 0) {
+      ctx.setFillColor('yellow', 1);
+    }
+
     var p = State.player;
     var playerWidth = 0.4;
     var dirPerp = {x: -p.dir.y, y: p.dir.x};
@@ -220,6 +238,8 @@ $(function () {
     ctx.closePath();
     ctx.fill();
 
+    ctx.setFillColor('white', 1);
+
     for (var i = 0; (i < State.mines.length) && State.runState === 'PLAY'; i++) {
       var m = State.mines[i];
 
@@ -228,7 +248,6 @@ $(function () {
         m.cooldown -= diff;
       } else {
         if (!m.sound) {
-          console.log('PLAY EXPLOSION');
           createjs.Sound.play('sounds/mineExplosion.mp3');
           m.sound = true;
         }
@@ -236,7 +255,7 @@ $(function () {
         // Mine is exploding
         m.radius += diff * 0.3;
 
-        if (State.runState === 'PLAY' && (collision(right,m) || collision(top,m) || collision(bottom,m))) {
+        if (!(State.player.dashCooldown > 0) && State.runState === 'PLAY' && (collision(right,m) || collision(top,m) || collision(bottom,m))) {
           State.runState = 'DEATH';
           createjs.Sound.stop();
           createjs.Sound.play('sounds/failure.mp3');
